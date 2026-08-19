@@ -1,0 +1,51 @@
+name: Спортни новини в Telegram
+
+on:
+  schedule:
+    - cron: "*/30 4-21 * * *"
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "Аргумент за скрипта (напр. --force, --chatid, --dry-run). Празно = нормално."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sports-news
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Изтегляне на кода
+        uses: actions/checkout@v4
+
+      - name: Инсталиране на Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Инсталиране на зависимости
+        run: pip install -r requirements.txt
+
+      - name: Пускане на бота
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python bot.py ${{ github.event.inputs.command }}
+
+      - name: Запазване на състоянието
+        run: |
+          if [ -n "$(git status --porcelain state.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add state.json
+            git commit -m "chore: update state [skip ci]"
+            git push
+          else
+            echo "Няма промяна в състоянието."
+          fi
