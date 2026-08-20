@@ -3,12 +3,6 @@
 Спортен новинарски бот за Telegram.
 Чете RSS от feeds.py, взима новите заглавия, маха повторенията
 и ги праща в Telegram чат на български. Работи през GitHub Actions.
-
-Употреба:
-    python bot.py            # нормално пускане
-    python bot.py --force    # прати веднага, без да гледа часа/интервала
-    python bot.py --dry-run  # само покажи какво би пратил
-    python bot.py --chatid   # покажи наличните chat ID-та
 """
 
 import os
@@ -34,8 +28,9 @@ from feeds import FEEDS, SPORTS, BG_KEYWORDS
 STATE_FILE = "state.json"
 OPEN_HOUR = 7
 CLOSE_HOUR = 23
-MIN_INTERVAL_MIN = 85
+MIN_INTERVAL_MIN = 12       # ~15 мин ритъм
 FIRST_RUN_LOOKBACK_H = 4
+MAX_AGE_HOURS = 10          # НИКОГА не праща новини по-стари от толкова часа
 MAX_PER_SPORT = 4
 MAX_TOTAL = 25
 SEEN_LIMIT = 3000
@@ -97,14 +92,19 @@ def fetch_feed(feed):
 
 
 def collect_items(state, force=False):
+    now_utc = datetime.now(timezone.utc)
     last_post_iso = state.get("last_post_iso")
     if last_post_iso:
         try:
             since = datetime.fromisoformat(last_post_iso)
         except Exception:
-            since = datetime.now(timezone.utc) - timedelta(hours=FIRST_RUN_LOOKBACK_H)
+            since = now_utc - timedelta(hours=FIRST_RUN_LOOKBACK_H)
     else:
-        since = datetime.now(timezone.utc) - timedelta(hours=FIRST_RUN_LOOKBACK_H)
+        since = now_utc - timedelta(hours=FIRST_RUN_LOOKBACK_H)
+
+    hard_floor = now_utc - timedelta(hours=MAX_AGE_HOURS)
+    if since < hard_floor:
+        since = hard_floor
 
     seen = set(state["seen"])
     found = {}
@@ -122,7 +122,7 @@ def collect_items(state, force=False):
                 continue
 
             when = entry_time(entry)
-            if when is not None and not force and when < since:
+            if when is not None and when < since:
                 continue
 
             if feed.get("scope") == "bg_only":
@@ -222,7 +222,7 @@ def show_chat_ids(token):
             chats[chat["id"]] = chat.get("title") or chat.get("username") or chat.get("first_name", "")
     print("\n=== Намерени чатове ===")
     if not chats:
-        print("Няма съобщения. Първо напиши нещо на бота в Telegram, после пусни пак.")
+        print("Няма съобщения. Първо напиши нещо на бота, после пусни пак.")
     for cid, name in chats.items():
         print(f"  CHAT_ID = {cid}   ({name})")
 
